@@ -39,7 +39,7 @@ class ReviewQueryDataset():
         self.tokenizer = BertTokenizer.from_pretrained(self.tokenizer_name)
         logger.info('load dataset...')
         # self.dataset = load_dataset(path=self.dataset_name, name="zh")
-        self.dataset = datasets = load_dataset(
+        self.dataset = load_dataset(
             path='csv',
             data_files={
                 'test': 'data/amazon/test_zh.csv',
