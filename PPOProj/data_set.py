@@ -42,8 +42,8 @@ class ReviewQueryDataset():
         self.dataset = datasets = load_dataset(
             path='csv',
             data_files={
-                'test': 'amazon/test_zh.csv',
-                'train': 'amazon/train_zh.csv'
+                'test': 'data/amazon/test_zh.csv',
+                'train': 'data/amazon/train_zh.csv'
             }
         )
         self.preprocess()
