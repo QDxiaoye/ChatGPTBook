@@ -38,7 +38,14 @@ class ReviewQueryDataset():
         self.input_size = LengthSampler(self.query_min_len, self.query_max_len)
         self.tokenizer = BertTokenizer.from_pretrained(self.tokenizer_name)
         logger.info('load dataset...')
-        self.dataset = load_dataset(path=self.dataset_name, name="zh")
+        # self.dataset = load_dataset(path=self.dataset_name, name="zh")
+        self.dataset = datasets = load_dataset(
+            path='csv',
+            data_files={
+                'test': 'amazon/test_zh.csv',
+                'train': 'amazon/train_zh.csv'
+            }
+        )
         self.preprocess()
 
     def tokenize(self, input):
