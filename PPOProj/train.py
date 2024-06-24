@@ -48,6 +48,7 @@ def load_models(args, device):
 def init_ppo(args, actor_model, ref_actor_model, actor_tokenizer, dataset):
     """
     初始化PPO配置
+    https://huggingface.co/docs/trl/main/en/ppo_trainer
     Args:
         args: 训练参数配置信息
         actor_model: 演员模型
@@ -146,6 +147,8 @@ def main():
     rqd = ReviewQueryDataset()
     my_dataset = rqd.dataset
     # 实例化模型
+    # https://github.com/huggingface/trl/blob/main/examples/notebooks/gpt2-sentiment.ipynb
+    # 同模型加载两次, actor_model用来优化, ref_actor_model用来计算KL散度以避免前者偏差太大
     actor_model, ref_actor_model, actor_tokenizer, critic_model, critic_tokenizer = load_models(args, device)
     ppo_trainer = init_ppo(args, actor_model, ref_actor_model, actor_tokenizer, my_dataset)
     # 开始训练

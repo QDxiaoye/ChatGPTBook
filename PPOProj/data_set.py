@@ -73,13 +73,14 @@ class ReviewQueryDataset():
         logger.info('start preprocess...')
         self.dataset = self.dataset.filter(lambda x: len(x["review_body"]) > self.max_len, batched=False)
         self.dataset = self.dataset.map(self.tokenize, batched=False)
-        self.dataset.set_format(type='torch')
+        self.dataset.set_format(type='torch')  # tf,list,numpy,torch
         logger.info('preprocess finish!')
 
 
 def collate_func(batch_data):
     """
     DataLoader所需的collate_fun函数，将数据处理成所需形式
+    [{fea1:1, fea2:2}, {fea1:3, fea2:4}] => {feat1:[1,3], fea2: [2,4]}
     Args:
         batch_data: batch数据
     Returns:
