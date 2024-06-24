@@ -92,23 +92,43 @@ def train(actor_tokenizer, critic_model, critic_tokenizer, device, ppo_trainer, 
 
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         query_tensors = batch['input_ids']
+        # [tensor([ 101, 1343, 2399,  743,  749,  671, 3613,  102], device='cuda:0')]
 
         #### 从演员模型生成文本
         response_tensors = []
         for query in query_tensors:
             gen_len = output_size_sampler()
             generation_kwargs["max_new_tokens"] = gen_len
+            # response = tensor([[ 101,  762, 7716, 6849,  102, 8966, 3833, 1220,  743, 4638,  102, 6413, 6432, 3322, 2094]], device='cuda:0')
             response = ppo_trainer.generate(query.to(device), **generation_kwargs)
+            # response.squeeze()[-gen_len:]= tensor([8966, 3833, 1220,  743, 4638,  102, 6413, 6432, 3322, 2094], device='cuda:0')
             response_tensors.append(response.squeeze()[-gen_len:])
         batch['response'] = [actor_tokenizer.decode(r.squeeze()) for r in response_tensors]
-
+        '''batch->
+        {'input_ids': [tensor([ 101,  762, 7716, 6849,  102], device='cuda:0')],
+         'query': ['[CLS] 亚 马 逊 [SEP]',
+         'response': ['号 称 第 一 书 的']}
+        '''
         #### 计算情感得分
         texts = [q + r for q, r in zip(batch['query'], batch['response'])]
         encoded_inputs = critic_tokenizer(texts, padding=True, truncation=True, return_tensors='pt').to(device)
+        '''encoded_inputs->
+        {'input_ids': tensor([[101,101, 762,7716,6849,102,1384,4917,5018,671,741,4638, 102, 0,0]], device='cuda:0'), 
+          'token_type_ids': tensor([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], device='cuda:0'), 
+          'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]], device='cuda:0')}
+        '''
         output = critic_model(**encoded_inputs)
+        '''output->
+        SequenceClassifierOutput(loss=None, logits=tensor([[ 0.0858,],[-0.3537,]], device='cuda:0', grad_fn=<AddmmBackward0>),)
+        '''
         rewards = list(output.logits[:, 1].float())
+        '''rewards->
+        [tensor(-0.0813, device='cuda:0', grad_fn=<UnbindBackward0>),]
+        '''
         #### 运行PPO流程
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
+        # 记录信息方面监控和分析
+        # stats-> loss: 当前批次总损失, policy_loss: 策略网络损失, value_loss: 价值网络损失, entropy: 策略网络熵, kl_divergence:
         ppo_trainer.log_stats(stats, batch, rewards)
 
 
