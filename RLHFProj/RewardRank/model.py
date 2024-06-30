@@ -68,9 +68,9 @@ class RewardModel(GPT2PreTrainedModel):
                     one_input_ids = input_ids_[i, :]
                     two_rank_reward = rank_reward[j, :]
                     two_input_ids = input_ids_[j, :]
-                    # 找到两个样本差异的地方，即生成query的差异内容
+                    # 找到两个样本差异的地方，即生成query的差异内容, 返回 [56, 1], value为不同值位置索引
                     check_divergence = (one_input_ids != two_input_ids).nonzero()
-                    one_inds = (one_input_ids == 0).nonzero()
+                    one_inds = (one_input_ids == 0).nonzero()  # 0 是padding, 在最后
                     one_ind = one_inds[0].item() if len(one_inds) > 0 else seq_len
                     if len(check_divergence) == 0:
                         end_ind = two_rank_reward.size(-1)
