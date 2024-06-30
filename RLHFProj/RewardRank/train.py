@@ -80,7 +80,7 @@ def train(model, device, train_data, test_data, args, tokenizer):
     for _ in trange(0, int(args.num_train_epochs), desc="Epoch", disable=False):
         iter_bar = tqdm(train_data_loader, desc="Iter (loss=X.XXX)", disable=False)
         for step, batch in enumerate(iter_bar):
-            input_ids = batch["input_ids"].to(device)
+            input_ids = batch["input_ids"].to(device)  # 21 * 768
             attention_mask = batch["attention_mask"].to(device)
             # 获取训练结果
             loss, _ = model.forward(input_ids=input_ids, attention_mask=attention_mask)
