@@ -70,18 +70,26 @@ def make_experience(args, actor_model, critic_model, ori_model, reward_model, in
 def update_model(args, experience_list, actor_model, actor_optimizer, critic_model, critic_optimizer, tb_write,
                  ppo_step):
     """模型更新"""
+    """{'input_ids': torch.Size([16, 701]),
+     'seq_outputs': torch.Size([16, 765]),
+     'attention_mask': torch.Size([16, 765]),
+     'action_log_probs': torch.Size([16, 764]),
+     'value': torch.Size([16, 764]),
+     'reward_score': torch.Size([16]),
+     'advantages': torch.Size([16, 64]),
+     'returns': torch.Size([16, 64])}"""
     # 根据强化学习训练轮数，进行模型更新
-    for _ in range(args.ppo_epoch):
+    for _ in range(args.ppo_epoch):  # 2
         # 随机打乱经验池中的数据，并进行数据遍历
         random.shuffle(experience_list)
         for i_e, experience in enumerate(experience_list):
             ppo_step += 1
-            start_ids = experience["input_ids"].size()[-1] - 1
+            start_ids = experience["input_ids"].size()[-1] - 1  # 700
 
-            # 获取actor模型的log_probs
+            # 获取actor模型的log_probs, 输入都是 [16, 765], 输出 [16, 764]
             action_log_probs = actor_model(experience["seq_outputs"], experience["attention_mask"])
             action_mask = experience["attention_mask"][:, 1:]
-            # 计算actor模型损失值
+            # 计算actor模型损失值, actor_loss=tensor(-0.0222, grad_fn=<DivBackward0>)
             actor_loss = actor_loss_function(action_log_probs[:, start_ids:],
                                              experience["action_log_probs"][:, start_ids:], experience["advantages"],
                                              action_mask[:, start_ids:], args.policy_clip_eps)
@@ -92,11 +100,11 @@ def update_model(args, experience_list, actor_model, actor_optimizer, critic_mod
             actor_optimizer.step()
             actor_optimizer.zero_grad()
 
-            # 计算critic模型的value
+            # 计算critic模型的value, 输入 [16, 765], [16, 765], 701-1 输出 value=[16, 765], _=[16]
             value, _ = critic_model(experience["seq_outputs"], experience["attention_mask"],
                                     experience["input_ids"].size()[-1])
             value = value[:, :-1]
-            # 计算critic模型损失值
+            # 计算critic模型损失值, 输入 均是 [16, 64], value_clip_eps=0.2, 输出 tensor(0.1965, grad_fn=<DivBackward0>)
             critic_loss = critic_loss_function(value[:, start_ids:], experience["value"][:, start_ids:],
                                                experience["returns"], action_mask[:, start_ids:], args.value_clip_eps)
             # actor模型梯度回传，梯度更新
@@ -146,14 +154,14 @@ def train(args, ori_model, actor_model, reward_model, critic_model, tokenizer, d
             # 记录数据中的奖励值
             mean_reward.extend(experience["reward_score"].detach().cpu().numpy().tolist())
 
-            # 当到达更新步数，进行模型更新, update_timesteps=20
+            # 当到达更新步数，进行模型更新, update_timesteps=20, 下面备注假定为4
             if (cnt_timesteps % args.update_timesteps == 0) and (cnt_timesteps != 0):
-                # 打印并记录平均奖励值
+                # 打印并记录平均奖励值, mean_reward len= cnt_timesteps * 16
                 mr = np.mean(np.array(mean_reward))
                 tb_write.add_scalar("mean_reward", mr, cnt_timesteps)
                 print("mean_reward", mr)
-                actor_model.train()
-                critic_model.train()
+                actor_model.train()  # inputs=21128, lm_head = 768 * 21128, outputs=21128
+                critic_model.train()  # 21128, 768 * 1
                 # 模型更新
                 ppo_step = update_model(args, experience_list, actor_model, actor_optimizer, critic_model,
                                         critic_optimizer, tb_write, ppo_step)
