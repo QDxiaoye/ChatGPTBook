@@ -23,6 +23,7 @@ class RewardModel(GPT2PreTrainedModel):
             config: 配置参数
         """
         super().__init__(config)
+        # https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
         self.transformer = GPT2Model(config)
         self.dropout_fn = torch.nn.Dropout()
         self.value_fn = torch.nn.Linear(config.n_embd, 1, bias=False)
@@ -37,19 +38,23 @@ class RewardModel(GPT2PreTrainedModel):
         Returns:
 
         """
-        # 获取GPT2模型的输出结果
+        # 获取GPT2模型的输出结果, BaseModelOutputWithPastAndCrossAttentions
+        # 由于显存问题，设置train_batch_size=1, input_ids: 7, 428
+        # outputs: hidden_states, (past_key_values,hidden_states),(attentions,cross_attentions)
+        # (batch, seq_length, hidden), (batch,layer*2, ,seq_length, heads)
+        # [7, 428, 768], [[7, 12, 428, 64], [7, 12, 428, 64]], [[7, 12, 428, 64], [7, 12, 428, 64]]
         transformer_outputs = self.transformer(input_ids, attention_mask=attention_mask)
-        hidden_states = transformer_outputs[0]
+        hidden_states = transformer_outputs[0]  # [7, 428, 768]
         # 对hidden_states进行dropout
         hidden_states = self.dropout_fn(hidden_states)
         # 获取每个token的预测值
-        values = self.value_fn(hidden_states).squeeze(-1)
+        values = self.value_fn(hidden_states).squeeze(-1)  # [7, 428, 1] -> [7, 428]
         # 获取批次个数和数据最大长度
-        true_bs, seq_len = input_ids.shape[0], input_ids.shape[1]
+        true_bs, seq_len = input_ids.shape[0], input_ids.shape[1]  # 7, 428
         # 获取真实批次，并对input_ids、values进行转换
         bs = int(true_bs / 7)
-        values = values.reshape([bs, 7, seq_len])
-        input_ids = input_ids.reshape([bs, 7, seq_len])
+        values = values.reshape([bs, 7, seq_len])  # [1, 7, 428]
+        input_ids = input_ids.reshape([bs, 7, seq_len])  # [1, 7, 428]
         loss, add_count = 0.0, 0
         # 遍历每个批次内容
         for ibs in range(bs):
@@ -63,9 +68,9 @@ class RewardModel(GPT2PreTrainedModel):
                     one_input_ids = input_ids_[i, :]
                     two_rank_reward = rank_reward[j, :]
                     two_input_ids = input_ids_[j, :]
-                    # 找到两个样本差异的地方，即生成query的差异内容
+                    # 找到两个样本差异的地方，即生成query的差异内容, 返回 [56, 1], value为不同值位置索引
                     check_divergence = (one_input_ids != two_input_ids).nonzero()
-                    one_inds = (one_input_ids == 0).nonzero()
+                    one_inds = (one_input_ids == 0).nonzero()  # 0 是padding, 在最后
                     one_ind = one_inds[0].item() if len(one_inds) > 0 else seq_len
                     if len(check_divergence) == 0:
                         end_ind = two_rank_reward.size(-1)
