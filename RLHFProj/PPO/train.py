@@ -35,18 +35,19 @@ def make_experience(args, actor_model, critic_model, ori_model, reward_model, in
         # 获取prompt内容长度
         prompt_length = input_ids.shape[1]
         # 使用动作模型通过已有提示生成指定内容，其中：seq_outputs为返回序列，包含prompt+生成的answer
+        # 输出都是[16,765]
         seq_outputs, attention_mask = actor_model.generate(input_ids, **generate_kwargs)
-        # 通过动作模型和原始模型同时计算生成结果对应的log_probs
+        # 通过动作模型和原始模型同时计算生成结果对应的log_probs, [16, 764]
         action_log_probs = actor_model(seq_outputs, attention_mask)
         base_action_log_probs = ori_model(seq_outputs, attention_mask)
-        # 通过评判模型计算生成的answer的分值
+        # 通过评判模型计算生成的answer的分值, value=[16, 765], _ 为[16]
         value, _ = critic_model(seq_outputs, attention_mask, prompt_length)
         value = value[:, :-1]
-        # 通过奖励模型计算生成奖励值，并对奖励值进行裁剪
+        # 通过奖励模型计算生成奖励值，并对奖励值进行裁剪, _=[16, 765], reward_score=[16]
         _, reward_score = reward_model.forward(seq_outputs, attention_mask, prompt_length=prompt_length)
         reward_clip = torch.clamp(reward_score, -args.reward_clip_eps, args.reward_clip_eps)
         # reward_clip = reward_score
-        # 对动作模型和原始模型的log_probs进行kl散度计算，防止动作模型偏离原始模型
+        # 对动作模型和原始模型的log_probs进行kl散度计算，防止动作模型偏离原始模型, kl_divergence=[16, 764]
         kl_divergence = -args.kl_coef * (action_log_probs - base_action_log_probs)
         rewards = kl_divergence
         start_ids = input_ids.shape[1] - 1
@@ -56,7 +57,8 @@ def make_experience(args, actor_model, critic_model, ori_model, reward_model, in
         # 将奖励值加到生成的answer最后一个token上
         for j in range(batch_size):
             rewards[j, start_ids:ends_ids[j]][-1] += reward_clip[j]
-        # 通过奖励值计算优势函数
+        # 通过奖励值计算优势函数, value=[16,764], rewards=[16, 764], start_ids=700, gamma=1.0, lam=0.95
+        # advantages=[16, 64], returns=[16, 64]
         advantages, returns = get_advantages_and_returns(value, rewards, start_ids, args.gamma, args.lam)
 
     experience = {"input_ids": input_ids, "seq_outputs": seq_outputs, "attention_mask": attention_mask,
@@ -120,9 +122,10 @@ def train(args, ori_model, actor_model, reward_model, critic_model, tokenizer, d
     for i in range(args.num_episodes):
         for timestep in range(args.max_timesteps):
             cnt_timesteps += 1
-            # 从数据集中随机抽取batch_size大小数据
+            # 从数据集中随机抽取batch_size大小数据, text list
             prompt_list = dataset.sample(args.batch_size)
-            # 生成模型所需的input_ids
+            # 生成模型所需的input_ids, 16 * 701, [0] *330 + [101] + ... + [102], torch.nonzero(inputs[1]).squeeze(1)
+            # tokenizer.cls_token_id=101, tokenizer.eos_token_id=102
             input_ids = tokenizer.batch_encode_plus(prompt_list, return_tensors="pt",
                                                     max_length=args.max_len - args.query_len - 3,
                                                     truncation=True, padding=True)["input_ids"]
@@ -143,7 +146,7 @@ def train(args, ori_model, actor_model, reward_model, critic_model, tokenizer, d
             # 记录数据中的奖励值
             mean_reward.extend(experience["reward_score"].detach().cpu().numpy().tolist())
 
-            # 当到达更新步数，进行模型更新
+            # 当到达更新步数，进行模型更新, update_timesteps=20
             if (cnt_timesteps % args.update_timesteps == 0) and (cnt_timesteps != 0):
                 # 打印并记录平均奖励值
                 mr = np.mean(np.array(mean_reward))
